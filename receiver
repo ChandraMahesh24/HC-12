@@ -1,0 +1,42 @@
+#include <Arduino.h>
+#include <HardwareSerial.h>
+
+String receivedData = "";
+
+const byte txLed = D0;        // Pin for TX LED
+const byte HC12RxdPin = D7;   // Receive Pin on HC12  
+const byte HC12TxdPin = D6;   // Transmit Pin on HC12 
+
+HardwareSerial HC12(1);       // Create Hardware Serial Port for UART1
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(txLed, OUTPUT);
+  HC12.begin(9600, SERIAL_8N1, HC12RxdPin,HC12TxdPin); // Open serial port to HC12 
+}
+
+void loop() {
+  if (HC12.available()) {
+    char receivedChar = HC12.read();
+    Serial.print("Received char: ");
+    Serial.print(receivedChar);
+
+    if (receivedChar == '$') { 
+      receivedData = ""; // Reset receivedData when a new message starts
+      receivedData += receivedChar; // Start accumulating the new message
+    } else if (receivedChar == '\n') { 
+      // End of message, process receivedData
+      Serial.print("Received message: ");
+      Serial.print(receivedData);
+      digitalWrite(txLed, HIGH);
+      delay(1000);
+      digitalWrite(txLed, LOW);
+      delay(1000);
+      HC12.print("Received message: ");
+      HC12.print(receivedData);
+      receivedData = ""; // Reset receivedData after processing
+    } else { 
+      receivedData += receivedChar; // Accumulate characters to form the message
+    }
+  }
+}
