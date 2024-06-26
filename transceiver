@@ -1,0 +1,83 @@
+//transceiver
+#include <SoftwareSerial.h>
+
+#define HC12_RX 2
+#define HC12_TX 3
+#define ACK_TIMEOUT 1000 // Timeout for acknowledgment in milliseconds
+#define RETRY_LIMIT 3 // Maximum number of retries for sending a chunk
+
+SoftwareSerial HC12(HC12_RX, HC12_TX);
+
+const char gpsData[] = "$PQTMANTENNASTATUS,1,0,1*4F
+$GNRMC,070424.000,A,2839.666348,N,07708.906226,E,3.84,249.31,210524,,,A,V*05
+$GNGGA,070424.000,2839.666348,N,07708.906226,E,1,9,1.24,221.974,M,-35.922,M,,*68
+$GNVTG,249.31,T,,M,3.84,N,7.10,K,A*27
+$GNGSA,A,3,20,25,11,195,196,06,194,,,,,,1.51,1.24,0.86,1*31
+$GNGSA,A,3,,,,,,,,,,,,,1.51,1.24,0.86,3*0F$GNGSA,A,3,,,,,,,,,,,,,1.51,1.24,0.86,6*0A
+$GPGSV,2,1,08,20,72,066,17,25,54,289,20,11,44,033,18,195,29,070,20,1*53
+$GPGSV,2,2,08,196,28,084,19,29,24,312,16,06,11,054,15,194,08,136,17,1*63
+$GAGSV,1,1,00,7*73
+$GIGSV,1,1,00,1*7D
+$GNGLL,2839.666348,N,07708.906226,E,070424.000,A,A*4A";
+                      // "$GPGGA,084825.000,2839.6308,N,07708.8978,E,1,5,1.77,185.9,M,-35.9,M,,*77\n"
+                      // "$GPGSA,A,3,11,29,05,20,13,,,,,,,,2.01,1.77,0.95*02\n"
+                      // "$GPGSV,2,1,08,05,74,037,28,29,49,331,25,20,42,039,27,12,38,192,*73\n"
+                      // "$GPGSV,2,2,08,11,23,059,33,13,23,123,26,37,21,251,,193,,,*71\n"
+                      // "$GPGLL,2839.6308,N,07708.8978,E,084825.000,A,A*51\n"
+                      // "$GPTXT,01,01,02,ANTSTATUS=OPEN*2B\0";
+
+void setup() {
+  Serial.begin(9600); // Initialize serial communication with Serial Monitor
+  HC12.begin(9600); // Initialize serial communication with HC-12
+}
+
+void loop() {
+  const char* ptr = gpsData;
+  while (*ptr != '\0') {
+    if (*ptr == '$') {
+      const char* chunkStart = ptr;
+      while (*ptr != '\0' && *ptr != '\n') {
+        ptr++;
+      }
+      if (*ptr == '\n') {
+        ptr++; // Include the newline character
+      }
+      sendChunk(chunkStart, ptr); // Send chunk from chunkStart to ptr
+    } else {
+      ptr++; // Move to the next character
+    }
+  }
+}
+String waitForAck() {
+  unsigned long startTime = millis();
+  while (!HC12.available()) {
+    // Check for timeout
+    if (millis() - startTime > 1000) {
+      Serial.println("Timeout waiting for acknowledgment!");
+      return ""; // Return an empty string on timeout
+    }
+  }
+  String ackMsg = HC12.readStringUntil('\n'); // Read and return acknowledgment message
+  Serial.print("Received acknowledgment: ");
+  Serial.println(ackMsg);
+  return ackMsg;
+}
+
+void sendChunk(const char* chunkStart, const char* chunkEnd) {
+  while (0 < RETRY_LIMIT) {
+    Serial.print("Transmitting chunk: ");
+    while (chunkStart != chunkEnd) {
+      Serial.print(*chunkStart); // Debugging: Print each character to Serial Monitor
+      HC12.write(*chunkStart++); // Send each character via HC-12
+    }
+    // HC12.println(); // Send newline to complete the chunk
+
+    if (waitForAck()) {
+      return; // Exit if acknowledgment received
+    }
+    // retries++;
+    Serial.println("Retrying...");
+    delay(1000); // Wait 1 second before retrying
+  }
+  Serial.println("Failed to send chunk after multiple attempts");
+}
